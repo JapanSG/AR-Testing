@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+    <script>
+      // Global state to sync visual tracking status
+      window.ARState = { anyMarkerVisible: false };
+
+      AFRAME.registerComponent('hybrid-coordinator', {
+        init: function () {
+          this.m1 = document.querySelector('#m1');
+          this.m2 = document.querySelector('#m2');
+          this.m3 = document.querySelector('#m3');
+          this.m4 = document.querySelector('#m4');
+          this.world = document.querySelector('#ar-world');
+        },
+        tick: function () {
+          let activeMarker = null;
+          let scale = 8;
+          let offsetX = scale - 0.5;
+          let offsetZ = scale / 2 - 0.5;
+
+          // Safe checks in case the DOM hasn't fully attached the entities yet
+          if (this.m1 && this.m1.object3D.visible) { 
+              activeMarker = this.m1; 
+              offsetX = -1 * offsetX; 
+              offsetZ = -1 * offsetZ; 
+          }
+          else if (this.m2 && this.m2.object3D.visible) {
+              activeMarker = this.m2; 
+              offsetZ = -1 * offsetZ; 
+          }
+          else if (this.m3 && this.m3.object3D.visible) {
+              activeMarker = this.m3; 
+              offsetX = -1 * offsetX; 
+          }
+          else if (this.m4 && this.m4.object3D.visible) { 
+              activeMarker = this.m4;
+          }
+
+          if (activeMarker) {
+            window.ARState.anyMarkerVisible = true;
+            this.world.setAttribute('visible', 'true');
+            
+            // Sync the AR World directly to the active marker
+            this.world.object3D.rotation.copy(activeMarker.object3D.rotation);
+            this.world.object3D.position.copy(activeMarker.object3D.position);
+            this.world.object3D.translateX(-offsetX);
+            this.world.object3D.translateZ(-offsetZ);
+          } 
+          else {
+            window.ARState.anyMarkerVisible = false;
+          }
+        }
+      });
+
+      // Flawless Motion Fallback (INS) Component
+      AFRAME.registerComponent('motion-fallback', {
+        init: function () {
+          const self = this; // Locks component scope safely for event listeners
+
+          self.initialDeviceOrientation = new THREE.Quaternion();
+          self.currentDeviceOrientation = new THREE.Quaternion();
+          self.velocity = new THREE.Vector3(0, 0, 0);
+          
+          self.lastTime = performance.now();
+        //   self.ACCEL_THRESHOLD = 0.15; // Cut off tiny vibration noise
+
+          // Secure iOS permission handshake on first user click
+          const requestPermissions = () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+              DeviceOrientationEvent.requestPermission();
+            }
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+              DeviceMotionEvent.requestPermission();
+            }
+            window.removeEventListener('click', requestPermissions);
+          };
+          window.addEventListener('click', requestPermissions);
+
+          // 1. TRACK ROTATION (Gyroscope)
+          window.addEventListener('deviceorientation', function (e) {
+            if (e.alpha === null || !self.el) return; 
+
+            const alpha = THREE.MathUtils.degToRad(e.alpha); 
+            const beta = THREE.MathUtils.degToRad(e.beta);
+            const gamma = THREE.MathUtils.degToRad(e.gamma);
+            
+            self.currentDeviceOrientation.setFromEuler(new THREE.Euler(beta, alpha, -gamma, 'YXZ'));
+
+            if (window.ARState.anyMarkerVisible) {
+              // Calibration Phase: Lock orientation baseline
+              self.initialDeviceOrientation.copy(self.currentDeviceOrientation);
+              self.el.object3D.quaternion.identity(); // Reset camera rotation to 0
+            } else {
+              // Tracking Phase: Calculate rotation delta and apply to camera
+              const deltaRotation = self.initialDeviceOrientation.clone().invert().multiply(self.currentDeviceOrientation);
+              self.el.object3D.quaternion.copy(deltaRotation);
+            }
+          });
+
+          // 2. TRACK POSITION (Linear Acceleration)
+          window.addEventListener('devicemotion', function (e) {
+            const acc = e.linearAcceleration;
+            if (!acc || acc.x === null || !self.el) return;
+
+            const currentTime = performance.now();
+            let dt = (currentTime - self.lastTime) / 1000;
+            self.lastTime = currentTime;
+
+            // Cap the time delta to prevent giant teleports if the browser tab sleeps
+            if (dt > 0.1) dt = 0.016; 
+
+            if (window.ARState.anyMarkerVisible) {
+              // While marker is visible, keep velocity dead and camera at origin point
+              self.velocity.set(0, 0, 0);
+              self.el.object3D.position.set(0, 0, 0); 
+              return; 
+            }
+
+            // Apply dead-zone filter to raw acceleration
+            const ax = Math.abs(acc.x) > self.ACCEL_THRESHOLD ? acc.x : 0;
+            const ay = Math.abs(acc.y) > self.ACCEL_THRESHOLD ? acc.y : 0;
+            const az = Math.abs(acc.z) > self.ACCEL_THRESHOLD ? acc.z : 0;
+
+            // Aggressive braking if sensors show no movement
+            if (ax === 0 && ay === 0 && az === 0) {
+               self.velocity.multiplyScalar(0.80);
+            }
+
+            // CRITICAL FIX: Rotate acceleration vector into spatial world coordinates
+            const localAcc = new THREE.Vector3(ax, ay, az);
+            localAcc.applyQuaternion(self.el.object3D.quaternion);
+
+            // Integrate acceleration into velocity (V = V + A * dt)
+            self.velocity.addScaledVector(localAcc, dt);
+            
+            // Apply constant friction (damping)
+            self.velocity.multiplyScalar(0.92);
+
+            // Integrate velocity into position (P = P + V * dt)
+            self.el.object3D.position.addScaledVector(self.velocity, dt);
+          });
+        }
+      });
+    </script>
+  </head>
+  
+  <body style="margin: 0px; overflow: hidden;">
+    <a-scene embedded arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3_HAMMING63; debugUIEnabled: false;" hybrid-coordinator>
+      
+      <a-marker type="barcode" value="1" id="m1"></a-marker>
+      <a-marker type="barcode" value="2" id="m2"></a-marker>
+      <a-marker type="barcode" value="3" id="m3"></a-marker>
+      <a-marker type="barcode" value="4" id="m4"></a-marker>
+
+      <a-box id="ar-world" visible="false" color="green" height="1" width="16" depth="8">
+      </a-box>
+
+      <a-entity id="camera" camera motion-fallback></a-entity>
+    </a-scene>
+  </body>
+</html>

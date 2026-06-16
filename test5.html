@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WebXR Native Pathing AR (Box Bus)</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+    <script>
+      // 1. NATIVE WAYPOINT DRIVER
+      AFRAME.registerComponent('waypoint-driver', {
+        schema: {
+          speed: { type: 'number', default: 0.2 }, // Speed in meters per second
+          points: { type: 'array', default: [] }   // Array of "X Y Z" strings
+        },
+        init: function () {
+          // Convert the string array from HTML into actual 3D Vectors
+          this.waypoints = this.data.points.map(pt => {
+            const coords = pt.trim().split(' ').map(Number);
+            return new THREE.Vector3(coords[0], coords[1], coords[2]);
+          });
+          
+          this.currentIdx = 0;
+          if (this.waypoints.length > 0) {
+            this.el.object3D.position.copy(this.waypoints[0]);
+          }
+        },
+        tick: function (time, timeDelta) {
+          if (this.waypoints.length === 0) return;
+          
+          // Don't move the bus if the AR world hasn't been placed yet
+          if (!document.querySelector('#ar-world').getAttribute('visible')) return;
+
+          const deltaSeconds = timeDelta / 1000;
+          const currentPos = this.el.object3D.position;
+          const targetPos = this.waypoints[this.currentIdx];
+
+          const distance = currentPos.distanceTo(targetPos);
+
+          // If the bus reaches a waypoint, switch to the next one
+          if (distance < 0.02) {
+            this.currentIdx = (this.currentIdx + 1) % this.waypoints.length;
+          } else {
+            // Calculate direction vector and move towards it
+            const direction = new THREE.Vector3().subVectors(targetPos, currentPos).normalize();
+            currentPos.addScaledVector(direction, this.data.speed * deltaSeconds);
+
+            // Make the box face the direction it's traveling
+            const lookAtTarget = new THREE.Vector3().copy(currentPos).add(direction);
+            this.el.object3D.lookAt(lookAtTarget);
+          }
+        }
+      });
+
+      // 2. SURFACE HIT MANAGER
+      AFRAME.registerComponent('ar-hit-manager', {
+        init: function () {
+          this.xrHitTestSource = null;
+          this.viewerSpace = null;
+          this.reticle = document.querySelector('#reticle');
+          this.world = document.querySelector('#ar-world');
+
+          this.el.sceneEl.addEventListener('enter-vr', () => {
+            const session = this.el.sceneEl.xrSession;
+            if (!session) return;
+
+            session.requestReferenceSpace('viewer').then((space) => {
+              this.viewerSpace = space;
+              session.requestHitTestSource({ space: this.viewerSpace }).then((source) => {
+                this.xrHitTestSource = source;
+              });
+            });
+
+            session.requestReferenceSpace('local-floor').then((space) => {
+              this.localFloorSpace = space;
+            });
+
+            session.addEventListener('select', () => {
+              if (!this.reticle.getAttribute('visible')) return;
+              this.world.object3D.position.copy(this.reticle.object3D.position);
+              this.world.object3D.quaternion.copy(this.reticle.object3D.quaternion);
+              this.world.setAttribute('visible', 'true');
+              this.reticle.setAttribute('visible', 'false');
+              this.xrHitTestSource = null; 
+            });
+          });
+        },
+        tick: function () {
+          const frame = this.el.sceneEl.xrFrame;
+          if (!frame || !this.xrHitTestSource) return;
+
+          const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
+          if (hitTestResults.length > 0) {
+            const pose = hitTestResults[0].getPose(this.localFloorSpace);
+            this.reticle.setAttribute('visible', 'true');
+            this.reticle.object3D.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+            this.reticle.object3D.quaternion.set(pose.transform.orientation.x, pose.transform.orientation.y, pose.transform.orientation.z, pose.transform.orientation.w);
+          } else {
+            this.reticle.setAttribute('visible', 'false');
+          }
+        }
+      });
+
+      // 3. PROXIMITY POPUP LOGIC
+      AFRAME.registerComponent('xr-proximity', {
+        schema: {
+          distance: { type: 'number', default: 0.4 },
+          popupId: { type: 'string' }
+        },
+        tick: function () {
+          const cameraPos = new THREE.Vector3();
+          document.querySelector('#camera').object3D.getWorldPosition(cameraPos);
+          
+          const buildingPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(buildingPos);
+          
+          const distance = buildingPos.distanceTo(cameraPos);
+          const popupEl = document.getElementById(this.data.popupId);
+
+          if (popupEl) {
+            if (distance < this.data.distance) {
+              popupEl.setAttribute('visible', 'true');
+            } else {
+              popupEl.setAttribute('visible', 'false');
+            }
+          }
+        }
+      });
+    </script>
+  </head>
+
+  <body style="margin: 0; overflow: hidden;">
+    <a-scene webxr="requiredFeatures: hit-test, local-floor;" ar-hit-manager renderer="colorManagement: true;">
+      
+      <a-camera id="camera" position="0 1.6 0"></a-camera>
+
+      <a-entity id="reticle" visible="false">
+        <a-ring rotation="-90 0 0" radius-inner="0.08" radius-outer="0.1" material="color: #00FF00; shader: flat;"></a-ring>
+      </a-entity>
+
+      <a-entity id="ar-world" visible="false">
+        
+        <a-box color="yellow" 
+               width="0.05" height="0.06" depth="0.1"
+               waypoint-driver="speed: 0.15; points: -0.8 0.04 0, -0.4 0.04 -0.3, 0.4 0.04 -0.3, 0.8 0.04 0, 0 0.04 0.3">
+        </a-box>
+
+        <a-entity position="0.3 0 -0.2" xr-proximity="distance: 0.35; popupId: info-card;">
+          <a-box width="0.15" height="0.1" depth="0.15" material="visible: false"></a-box>
+          <a-entity id="info-card" position="0 0.25 0" visible="false"
+                    geometry="primitive: plane; width: 0.5; height: 0.2" 
+                    material="color: #111; opacity: 0.9;"
+                    text="value: Engineering Block\nClassrooms 1-10; align: center; color: white; width: 1.2;">
+          </a-entity>
+        </a-entity>
+
+      </a-entity>
+    </a-scene>
+  </body>
+</html>

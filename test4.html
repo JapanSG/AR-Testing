@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    
+    <script src="https://rawgit.com/protyze/aframe-curve-component/master/dist/aframe-curve-component.min.js"></script>
+    <script src="https://rawgit.com/protyze/aframe-alongpath-component/master/dist/aframe-alongpath-component.min.js"></script>
+
+    <script>
+      // Global state to share tracking status between components
+      window.ARState = { anyMarkerVisible: false };
+
+      AFRAME.registerComponent('hybrid-coordinator', {
+        init: function () {
+          this.m1 = document.querySelector('#m1');
+          this.m2 = document.querySelector('#m2');
+          this.m3 = document.querySelector('#m3');
+          this.m4 = document.querySelector('#m4');
+          this.world = document.querySelector('#ar-world');
+        },
+        tick: function () {
+            let activeMarker = null;
+            let scale = 8;
+            let offsetX = scale - 0.5;
+            let offsetZ = scale/2 - 0.5;
+
+            if (this.m1.object3D.visible) { 
+                activeMarker = this.m1; 
+                offsetX = -1 * (offsetX); 
+                offsetZ = -1 * (offsetZ); 
+            }
+            else if (this.m2.object3D.visible) {
+                activeMarker = this.m2; 
+                offsetZ = -1 *(offsetZ); 
+            }
+            else if (this.m3.object3D.visible) {
+                activeMarker = this.m3; 
+                offsetX = -1 * (offsetX); 
+            }
+            else if (this.m4.object3D.visible) { 
+                activeMarker = this.m4;
+            }
+
+            if (activeMarker) {
+                window.ARState.anyMarkerVisible = true;
+                this.world.setAttribute('visible', 'true');
+                
+                // Sync positions based on visual tracking
+                this.world.object3D.rotation.copy(activeMarker.object3D.rotation);
+                this.world.object3D.position.copy(activeMarker.object3D.position);
+                this.world.object3D.translateX(-offsetX);
+                this.world.object3D.translateZ(-offsetZ);
+            } 
+            else {
+                window.ARState.anyMarkerVisible = false;
+            }
+        }
+      });
+
+      // Gyroscope Fallback Component
+      AFRAME.registerComponent('gyro-fallback', {
+        init: function () {
+          this.initialDeviceOrientation = null;
+          
+          // Request permission for iOS devices if necessary
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            window.addEventListener('click', () => {
+              DeviceOrientationEvent.requestPermission();
+            }, { once: true });
+          }
+
+          window.addEventListener('deviceorientation', (e) => {
+            if (e.alpha === null) return; // Ensure sensor data exists
+
+            // Convert degrees to radians (Note: adjust axes to match A-Frame space)
+            const alpha = THREE.MathUtils.degToRad(e.alpha); 
+            const beta = THREE.MathUtils.degToRad(e.beta);
+            const gamma = THREE.MathUtils.degToRad(e.gamma);
+            
+            // Create a quaternion representing the phone's physical rotation
+            const currentPhoneRot = new THREE.Quaternion().setFromEuler(new THREE.Euler(beta, alpha, -gamma, 'YXZ'));
+
+            if (window.ARState.anyMarkerVisible) {
+              // CALIBRATION PHASE: While looking at a marker, save the sensor baseline
+              this.initialDeviceOrientation = currentPhoneRot.clone();
+              // Keep the camera locked to default while tracking is active
+              this.el.object3D.quaternion.set(0, 0, 0, 1);
+            } else if (this.initialDeviceOrientation) {
+              // FALLBACK PHASE: Markers are lost. Calculate the rotational delta
+              const deltaRotation = this.initialDeviceOrientation.clone().invert().multiply(currentPhoneRot);
+              
+              // Apply the rotation delta directly to the camera to look around the frozen map
+              this.el.object3D.quaternion.copy(deltaRotation);
+            }
+          });
+        }
+      });
+    </script>
+  </head>
+  
+  <body style="margin: 0px; overflow: hidden;">
+    <a-scene embedded arjs="sourceType: webcam; detectionMode: mono_and_matrix; matrixCodeType: 3x3_HAMMING63; debugUIEnabled: false;" hybrid-coordinator>
+      
+      <!-- <a-assets>
+        <a-asset-item id="bus-model" src="models/bus.glb"></a-asset-item>
+      </a-assets> -->
+
+      <a-marker type="barcode" value="1" id="m1"></a-marker>
+      <a-marker type="barcode" value="2" id="m2"></a-marker>
+      <a-marker type="barcode" value="3" id="m3"></a-marker>
+      <a-marker type="barcode" value="4" id="m4"></a-marker>
+
+      <a-box id="ar-world" visible="false" color="green" height="1" width="16" depth="8">
+        <!-- <a-curve id="bus-route">
+          <a-curve-point position="-0.8 0.02 0"></a-curve-point>
+          <a-curve-point position="0 0.02 -0.3"></a-curve-point>
+          <a-curve-point position="0.8 0.02 0"></a-curve-point>
+        </a-curve> -->
+
+        <!-- <a-entity gltf-model="#bus-model" scale="0.05 0.05 0.05" alongpath="curve: #bus-route; dur: 10000; loop: true"></a-entity> -->
+      </a-box>
+
+      <a-entity id="camera" camera gyro-fallback></a-entity>
+    </a-scene>
+  </body>
+</html>
