@@ -4,9 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Three JS Test</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        #overlay {
+            position: absolute;
+            display: grid;
+            grid-template-columns: auto auto auto;
+            top: 0;
+            left: 0;
+            background-color: rgba(236, 192, 0, 0.5);
+            z-index: 100;
+        }
+    </style>
 </head>
 <body>
-    <script type="module" src="three-test/three-js-test.js"></script>
-    <canvas id="c"></canvas>
+    <div id="overlay">
+        <button id="rollLeft">Roll Left</button>
+        <button id="up">Up</button>
+        <button id="rollRight">Roll Right</button>
+        <button id="left">Left</button>
+        <button id="down">Down</button>
+        <button id="right">Right</button>
+    </div>
+    <script type="module" src="three-script.js"></script>
 </body>
 </html>
