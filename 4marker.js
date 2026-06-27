@@ -1,9 +1,10 @@
-A_X = 0;
-A_Y = 0;
-A_Z = 0;
-R_A = 0;
-R_B = 0;
-R_G = 0;
+import * as THREE from 'three';
+const A_X = 0;
+const A_Y = 0;
+const A_Z = 0;
+const R_A = 0;
+const R_B = 0;
+const R_G = 0;
 
 AFRAME.registerComponent('hybrid-coordinator', {
     init: function () {
@@ -42,30 +43,26 @@ AFRAME.registerComponent('hybrid-coordinator', {
         try {
             // If any corner is seen, recalculate the center of the world
             if (activeMarker) {
-                this.world.setAttribute('visible', 'true');
                 let r = activeMarker.object3D.rotation;
                 let p = activeMarker.object3D.position;
-
-                let cr = this.cam.object3D.rotation;
-                let cp = this.cam.object3D.position;
+                
                 this.world.object3D.rotation.copy(r);
                 this.world.object3D.position.copy(p);
-
+                
                 document.getElementById("rotation").innerText = `x:${r.x.toFixed(2)} y:${r.y.toFixed(2)} z:${r.z.toFixed(2)}`;
                 document.getElementById("position").innerText = `x:${p.x.toFixed(2)} y:${p.y.toFixed(2)} z:${p.z.toFixed(2)}`;
-                document.getElementById("c-rot").innerText = `x:${cr.x.toFixed(2)} y:${cr.y.toFixed(2)} z:${cr.z.toFixed(2)}`;
-                document.getElementById("c-pos").innerText = `x:${cp.x.toFixed(2)} y:${cp.y.toFixed(2)} z:${cp.z.toFixed(2)}`;
-
-                this.world.object3D.translateX(-offsetX);
+                
+                // this.world.object3D.translateX(-offsetX);
                 this.world.object3D.translateZ(-offsetZ);
+                this.world.object3D.rotateX(THREE.MathUtils.degToRad(document.getElementById("rotate-x").value));
+                this.world.object3D.rotateY(THREE.MathUtils.degToRad(document.getElementById("rotate-y").value));
+                this.world.object3D.rotateZ(THREE.MathUtils.degToRad(document.getElementById("rotate-z").value));
                 document.getElementById("tracked").innerText = "Tracking";
+                this.world.setAttribute('visible', 'true');
             }
             else {
-                const posMoved = new THREE.Vector3(A_X * timeDelta, A_Y * timeDelta, A_Z * timeDelta);
-                const rotate = new THREE.Vector3(R_A * timeDelta, R_B * timeDelta, R_G * timeDelta);
-                this.cam.object3D.rotation.add(rotate);
-                this.cam.object3D.position.add(posMoved);
-                document.getElementById("tracked").innerText = "Not Tracking";
+                // this.world.setAttribute('visible', 'false');
+                // document.getElementById("tracked").innerText = "Not Tracking";
             }
         }
         catch (e){
@@ -140,11 +137,25 @@ function handleClick() {
     }
 }
 
+function updateRotationValues() {
+    const rotateX = document.getElementById("rotate-x").value;
+    const rotateY = document.getElementById("rotate-y").value;
+    const rotateZ = document.getElementById("rotate-z").value;
+
+    document.getElementById("rotate-x-val").innerText = rotateX;
+    document.getElementById("rotate-y-val").innerText = rotateY;
+    document.getElementById("rotate-z-val").innerText = rotateZ;
+}
+
 function init() {
     document.getElementById("request-permissions").addEventListener("click", handleClick);
     document.getElementById("hide-overlay").addEventListener("click", () => {
         document.getElementById("vals").hidden = !document.getElementById("vals").hidden;
     });
+
+    document.getElementById("rotate-x").addEventListener("input", updateRotationValues);
+    document.getElementById("rotate-y").addEventListener("input", updateRotationValues);
+    document.getElementById("rotate-z").addEventListener("input", updateRotationValues);
 }
 
 init();

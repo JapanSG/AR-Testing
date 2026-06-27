@@ -19,7 +19,9 @@
     <a-marker type="barcode" value="3" id="m3"></a-marker>
     <a-marker type="barcode" value="4" id="m4"></a-marker>
 
-    <a-box id="ar-world" visible="false" color="green" height="1" width="16" depth="8"></a-box>
+    <a-box id="ar-world" visible="false" color="green" opacity="0.5" height="1" width="16" depth="8">
+
+    </a-box>
     <a-entity id="camera" camera></a-entity>
   </a-scene>
 
@@ -29,9 +31,15 @@
     <div id="vals">
       <div id="rotation">Null</div>
       <div id="position">Null</div>
-      <div id="c-rot">Null</div>
-      <div id="c-pos">Null</div>
       <div id="tracked">NOT TRACKING</div>
+      <div id="rotate-x-val">0</div>
+      <input type="range" id="rotate-x" min="0" max="360" step="1" value="0">
+      <br>
+      <div id="rotate-y-val">0</div>
+      <input type="range" id="rotate-y" min="0" max="360" step="1" value="0">
+      <br>
+      <div id="rotate-z-val">0</div>
+      <input type="range" id="rotate-z" min="0" max="360" step="1" value="0">
       <div>
         <h1>Orientation</h1>
         <div>absolute: <span id="absolute">NULL</span></div>
@@ -47,7 +55,7 @@
       </div>
     </div>
   </div>
-  <script src="4marker.js"></script>
+  <script type="module" src="4marker.js"></script>
 </body>
 
 </html>
