@@ -19,9 +19,7 @@
     <a-marker type="barcode" value="3" id="m3"></a-marker>
     <a-marker type="barcode" value="4" id="m4"></a-marker>
 
-    <a-box id="ar-world" visible="false" color="green" opacity="0.5" height="1" width="16" depth="8">
-
-    </a-box>
+    <a-entity id="ar-world" visible="false"></a-entity>
     <a-entity id="camera" camera></a-entity>
   </a-scene>
 
@@ -30,7 +28,7 @@
     <button id="hide-overlay">Hide</button>
     <div id="vals">
       <div id="rotation">Null</div>
-      <div id="position">Null</div>
+      <div id="position">Null</div> 
       <div id="tracked">NOT TRACKING</div>
       <div id="rotate-x-val">0</div>
       <input type="range" id="rotate-x" min="0" max="360" step="1" value="0">
